@@ -1,0 +1,286 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Luxury Reverse Image Search - Coveo + OpenSearch + Bedrock
+
+Parameters:
+  S3BucketName:
+    Type: String
+    Description: S3 bucket containing images
+  
+  OpenSearchInstanceType:
+    Type: String
+    Default: t3.small.search
+    Description: OpenSearch instance type
+    AllowedValues:
+      - t3.small.search
+      - t3.medium.search
+      - m6g.large.search
+  
+  OpenSearchVolumeSize:
+    Type: Number
+    Default: 10
+    Description: OpenSearch EBS volume size in GB
+    MinValue: 10
+    MaxValue: 100
+  
+  OpenSearchPassword:
+    Type: String
+    NoEcho: true
+    Description: Master user password for OpenSearch (min 8 chars, must include uppercase, lowercase, number, special char)
+    MinLength: 8
+  
+  CoveoOrgId:
+    Type: String
+    Description: Coveo Organization ID
+  
+  CoveoPushApiKey:
+    Type: String
+    NoEcho: true
+    Description: Coveo Push API Key (for IPE Extension)
+  
+  CoveoSearchApiKey:
+    Type: String
+    NoEcho: true
+    Description: Coveo Search API Key
+
+Globals:
+  Function:
+    Runtime: python3.12
+    Timeout: 300
+    MemorySize: 512
+    Environment:
+      Variables:
+        OPENSEARCH_ENDPOINT: !GetAtt OpenSearchDomain.DomainEndpoint
+        OPENSEARCH_INDEX_NAME: luxury-image-embeddings
+        COVEO_ORGANIZATION_ID: !Ref CoveoOrgId
+        COVEO_PUSH_API_KEY: !Ref CoveoPushApiKey
+        COVEO_SEARCH_API_KEY: !Ref CoveoSearchApiKey
+        S3_BUCKET_NAME: !Ref S3BucketName
+        BEDROCK_MODEL_ID: amazon.titan-embed-image-v1
+        MAX_OPENSEARCH_RESULTS: '10'
+        LOG_OPENSEARCH_RESULTS: 'true'
+
+Resources:
+  # OpenSearch Domain
+  OpenSearchDomain:
+    Type: AWS::OpenSearchService::Domain
+    Properties:
+      DomainName: !Sub ${AWS::StackName}-os
+      EngineVersion: OpenSearch_2.11
+      ClusterConfig:
+        InstanceType: !Ref OpenSearchInstanceType
+        InstanceCount: 1
+        DedicatedMasterEnabled: false
+        ZoneAwarenessEnabled: false
+      EBSOptions:
+        EBSEnabled: true
+        VolumeType: gp3
+        VolumeSize: !Ref OpenSearchVolumeSize
+      AccessPolicies:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: 'es:*'
+            Resource: !Sub 'arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${AWS::StackName}-os/*'
+      EncryptionAtRestOptions:
+        Enabled: true
+      NodeToNodeEncryptionOptions:
+        Enabled: true
+      DomainEndpointOptions:
+        EnforceHTTPS: true
+        TLSSecurityPolicy: Policy-Min-TLS-1-2-2019-07
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-os
+  # API Gateway
+  SearchApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: prod
+      Cors:
+        AllowMethods: "'GET,POST,OPTIONS'"
+        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+        AllowOrigin: "'*'"
+
+  # Lambda Layer for shared dependencies
+  DependenciesLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: luxury-search-dependencies
+      Description: Shared dependencies for Lambda functions
+      ContentUri: ../backend/layer/
+      CompatibleRuntimes:
+        - python3.12
+    Metadata:
+      BuildMethod: python3.12
+
+  # Search Lambda Function
+  SearchFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: luxury-image-search
+      CodeUri: ../backend/search_api/
+      Handler: handler.lambda_handler
+      Layers:
+        - !Ref DependenciesLayer
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Ref S3BucketName
+        - Statement:
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+              Resource: '*'
+        - Statement:
+            - Effect: Allow
+              Action:
+                - es:ESHttpGet
+                - es:ESHttpPost
+                - es:ESHttpPut
+              Resource: !Sub '${OpenSearchDomain.Arn}/*'
+        - Statement:
+            - Effect: Allow
+              Action:
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource: '*'
+      Events:
+        SearchApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref SearchApi
+            Path: /search
+            Method: POST
+
+  # IPE Extension Lambda Function
+  IPEExtensionFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: coveo-ipe-extension
+      CodeUri: ../backend/ipe_extension/
+      Handler: handler.lambda_handler
+      Layers:
+        - !Ref DependenciesLayer
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Ref S3BucketName
+        - Statement:
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+              Resource: '*'
+        - Statement:
+            - Effect: Allow
+              Action:
+                - es:ESHttpGet
+                - es:ESHttpPost
+                - es:ESHttpPut
+              Resource: !Sub '${OpenSearchDomain.Arn}/*'
+        - Statement:
+            - Effect: Allow
+              Action:
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource: '*'
+      FunctionUrlConfig:
+        AuthType: NONE
+        Cors:
+          AllowOrigins:
+            - '*'
+          AllowMethods:
+            - POST
+          AllowHeaders:
+            - '*'
+
+  # CloudWatch Log Groups
+  SearchFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${SearchFunction}
+      RetentionInDays: 7
+
+  IPEExtensionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${IPEExtensionFunction}
+      RetentionInDays: 7
+
+  MetadataExtractorLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${MetadataExtractorFunction}
+      RetentionInDays: 7
+
+  # Metadata Extractor Lambda Function
+  MetadataExtractorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: metadata-extractor
+      CodeUri: ../backend/metadata_extractor/
+      Handler: handler.lambda_handler
+      Timeout: 60
+      MemorySize: 1024
+      Environment:
+        Variables:
+          NOVA_MODEL_ID: amazon.nova-lite-v1:0
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+              Resource: '*'
+        - Statement:
+            - Effect: Allow
+              Action:
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource: '*'
+      Events:
+        ExtractMetadataApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref SearchApi
+            Path: /extract-metadata
+            Method: POST
+
+Outputs:
+  OpenSearchEndpoint:
+    Description: OpenSearch domain endpoint
+    Value: !GetAtt OpenSearchDomain.DomainEndpoint
+    Export:
+      Name: !Sub ${AWS::StackName}-OpenSearchEndpoint
+  
+  OpenSearchDashboard:
+    Description: OpenSearch Dashboards URL
+    Value: !Sub https://${OpenSearchDomain.DomainEndpoint}/_dashboards
+    Export:
+      Name: !Sub ${AWS::StackName}-OpenSearchDashboard
+
+  ApiEndpoint:
+    Description: API Gateway endpoint URL
+    Value: !Sub https://${SearchApi}.execute-api.${AWS::Region}.amazonaws.com/prod
+    Export:
+      Name: !Sub ${AWS::StackName}-ApiEndpoint
+
+  SearchFunctionArn:
+    Description: Search Lambda Function ARN
+    Value: !GetAtt SearchFunction.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-SearchFunctionArn
+
+  IPEExtensionUrl:
+    Description: IPE Extension Function URL
+    Value: !GetAtt IPEExtensionFunctionUrl.FunctionUrl
+    Export:
+      Name: !Sub ${AWS::StackName}-IPEExtensionUrl
+
+  MetadataExtractorArn:
+    Description: Metadata Extractor Lambda Function ARN
+    Value: !GetAtt MetadataExtractorFunction.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-MetadataExtractorArn

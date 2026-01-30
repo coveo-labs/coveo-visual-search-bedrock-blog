@@ -1,0 +1,66 @@
+# Environment variables
+.env
+.env.local
+ui/.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# AWS
+.aws-sam/
+infrastructure/.aws-sam/
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+.cache/
+
+# Build artifacts
+*.zip
+package/
+function.zip
+
+# Lambda layer dependencies (large, should be built during deploy)
+backend/layer/python/
+
+# Scraper output (generated data)
+scraper/output/
+scraper/__pycache__/
+
+# UI build output
+ui/dist/
+ui/.netlify/
+
+# Netlify state
+.netlify/

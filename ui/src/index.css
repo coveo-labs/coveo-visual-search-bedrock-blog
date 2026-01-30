@@ -1,0 +1,43 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-luxury-black text-luxury-white font-sans antialiased;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-serif;
+  }
+}
+
+@layer utilities {
+  .luxury-gradient {
+    background: linear-gradient(180deg, #0A0A0A 0%, #1a1a1a 50%, #2C2C2C 100%);
+  }
+  
+  .gold-gradient {
+    background: linear-gradient(135deg, #D4AF37 0%, #F4D03F 50%, #B8941F 100%);
+  }
+  
+  .glass-effect {
+    background: rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(212, 175, 55, 0.15);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  }
+  
+  .hermes-card {
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(212, 175, 55, 0.2);
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  
+  .hermes-card:hover {
+    border-color: rgba(212, 175, 55, 0.5);
+    box-shadow: 0 20px 60px rgba(212, 175, 55, 0.15);
+    transform: translateY(-8px);
+  }
+}

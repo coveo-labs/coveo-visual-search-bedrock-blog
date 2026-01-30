@@ -1,0 +1,33 @@
+# Hermès Product URLs
+# Add one URL per line
+# Lines starting with # are comments
+
+# Sneakers
+https://www.hermes.com/us/en/product/master-sneaker-H261881ZH01390/
+https://www.hermes.com/us/en/product/master-sneaker-H261881ZH20400/
+https://www.hermes.com/us/en/product/jet-sneaker-H242925ZHGT390/
+https://www.hermes.com/us/en/product/match-sneaker-H261863ZH01390/
+https://www.hermes.com/us/en/product/trail-sneaker-H242848ZH90415/
+https://www.hermes.com/us/en/product/day-sneaker-H252883ZH90410/
+
+# Shirts
+https://www.hermes.com/us/en/product/fitted-shirt-H566000H20237/
+https://www.hermes.com/us/en/product/fitted-shirt-H566000H29037/
+https://www.hermes.com/us/en/product/h-straight-cut-embroidered-denim-shirt-H566060HA6041/
+https://www.hermes.com/us/en/product/h-straight-cut-embroidered-denim-shirt-H566060HA5037/
+https://www.hermes.com/us/en/product/metal-au-carre-straight-cut-shirt-H656500HH6639/
+
+# Jackets
+https://www.hermes.com/us/en/product/rayures-de-laine-et-papier-reversible-straight-cut-jacket-H562340HD0148/
+https://www.hermes.com/us/en/product/straight-cut-denim-jacket-H562480HN6046/
+https://www.hermes.com/us/en/product/straight-cut-jacket-H562400HE1W52/
+
+# Swimwear
+https://www.hermes.com/us/en/product/cavalcadour-esquisse-swim-trunks-H568101H463SM/
+
+# Jewelry
+https://www.hermes.com/us/en/product/echappee-hermes-earrings-medium-model-H219597Bv00/
+https://www.hermes.com/us/en/product/chaine-d-ancre-enchainee-ring-small-model-H120647Bv00051/
+
+# Add more URLs below to reach 50 products
+# You can find more products at: https://www.hermes.com/us/en/
