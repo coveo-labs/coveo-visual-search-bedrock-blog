@@ -2,9 +2,12 @@
 Configuration for Hermes scraper
 """
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+# Load .env from project root (parent of scraper directory)
+project_root = Path(__file__).parent.parent
+load_dotenv(project_root / '.env')
 
 # AWS Configuration
 AWS_REGION = os.getenv('AWS_REGION', 'us-east-1')

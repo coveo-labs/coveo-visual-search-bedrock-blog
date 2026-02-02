@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
 
-export default function MetadataExtractor() {
+export default function MetadataExtractor({ onExtract }) {
   const [preview, setPreview] = useState(null)
   const [metadata, setMetadata] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -68,6 +68,11 @@ export default function MetadataExtractor() {
 
       const data = await response.json()
       setMetadata(data.metadata)
+      
+      // Notify parent of extraction for analytics
+      if (onExtract && data.metadata) {
+        onExtract(data.metadata)
+      }
     } catch (err) {
       console.error('Extraction error:', err)
       setError('Failed to extract metadata. Please try again.')

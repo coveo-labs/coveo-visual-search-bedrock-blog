@@ -11,7 +11,8 @@ OPENSEARCH_INDEX = os.environ['OPENSEARCH_INDEX_NAME']
 COVEO_ORG_ID = os.environ['COVEO_ORGANIZATION_ID']
 COVEO_SEARCH_API_KEY = os.environ['COVEO_SEARCH_API_KEY']
 BEDROCK_MODEL_ID = os.environ['BEDROCK_MODEL_ID']
-MAX_RESULTS = int(os.environ.get('MAX_OPENSEARCH_RESULTS', '10'))
+MAX_RESULTS = int(os.environ.get('MAX_OPENSEARCH_RESULTS', '20'))  # Fetch up to 20 from OpenSearch
+MIN_SIMILARITY = float(os.environ.get('MIN_SIMILARITY_THRESHOLD', '0.6'))  # 60% threshold
 LOG_RESULTS = os.environ.get('LOG_OPENSEARCH_RESULTS', 'true').lower() == 'true'
 AWS_REGION = os.environ.get('AWS_REGION', 'us-east-1')
 
@@ -99,21 +100,22 @@ def search_opensearch(embedding, k=MAX_RESULTS):
         raise
 
 
-def search_coveo(asset_ids, similarity_scores=None, min_score=0.5):
-    """Search Coveo with asset IDs filter and similarity threshold"""
+def search_coveo(asset_ids, similarity_scores=None, min_score=0.6):
+    """Search Coveo with asset IDs filter and similarity threshold (60% default)"""
     import requests
     
     try:
         # Filter asset_ids by minimum similarity score if provided
         if similarity_scores:
-            filtered_ids = [
-                aid for aid, score in zip(asset_ids, similarity_scores) 
+            filtered_pairs = [
+                (aid, score) for aid, score in zip(asset_ids, similarity_scores) 
                 if score >= min_score
             ]
-            if not filtered_ids:
-                print(f"No results above similarity threshold {min_score}")
+            if not filtered_pairs:
+                print(f"No results above similarity threshold {min_score} (60%)")
                 return []
-            asset_ids = filtered_ids
+            asset_ids = [pair[0] for pair in filtered_pairs]
+            print(f"Filtered to {len(asset_ids)} results with similarity >= {min_score*100:.0f}%")
         
         # Build advanced query with asset IDs
         aq_parts = [f"@assetid=={asset_id}" for asset_id in asset_ids]
@@ -244,11 +246,11 @@ def lambda_handler(event, context):
                 })
             }
         
-        # Get minimum score threshold from request (default 0.5)
-        min_score = float(body.get('min_score', 0.5))
+        # Get minimum score threshold from request (default 0.6 = 60%)
+        min_score = float(body.get('min_score', MIN_SIMILARITY))
         
-        # Step 3: Search Coveo with asset IDs (filtered by similarity)
-        print(f"Searching Coveo with {len(asset_ids)} asset IDs (min_score: {min_score})...")
+        # Step 3: Search Coveo with asset IDs (filtered by 60% similarity)
+        print(f"Searching Coveo with {len(asset_ids)} asset IDs (min_score: {min_score*100:.0f}%)...")
         coveo_results = search_coveo(asset_ids, similarity_scores, min_score)
         
         # Prepare response

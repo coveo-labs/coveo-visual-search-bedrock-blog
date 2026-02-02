@@ -2,8 +2,13 @@
 """
 Setup Coveo Fields
 
-Creates all required fields in Coveo for faceting and search
-Must be run BEFORE indexing products
+Creates all required fields in Coveo for faceting and search.
+Must be run BEFORE indexing products.
+
+Usage:
+  python setup_coveo_fields.py
+
+Requires COVEO_FIELD_API_KEY in .env (needs Field API permissions)
 """
 
 import requests
@@ -16,21 +21,24 @@ import config
 
 
 # Fields to create with their configurations
+# These match the AI pipeline output and UI facets
 FIELDS_TO_CREATE = [
-    # Core fields
+    # === Core Identification Fields ===
     {
         'name': 'assetid',
         'description': 'Unique asset identifier',
         'type': 'STRING',
-        'facet': True,
+        'facet': False,
         'multiValueFacet': False,
         'sort': True,
         'includeInQuery': True,
         'includeInResults': True,
     },
+    
+    # === Facet Fields (used in UI sidebar) ===
     {
         'name': 'category',
-        'description': 'Product category (Shirts, Pants, Watches, etc.)',
+        'description': 'Product category (Shirts, Trousers, Jewelry, Watches, Shoes, Bags)',
         'type': 'STRING',
         'facet': True,
         'multiValueFacet': False,
@@ -40,7 +48,7 @@ FIELDS_TO_CREATE = [
     },
     {
         'name': 'subcategory',
-        'description': 'Product subcategory (Dress Shirt, Jeans, etc.)',
+        'description': 'Product subcategory (Dress Shirt, Jeans, Necklace, etc.)',
         'type': 'STRING',
         'facet': True,
         'multiValueFacet': False,
@@ -50,7 +58,7 @@ FIELDS_TO_CREATE = [
     },
     {
         'name': 'color',
-        'description': 'Product color',
+        'description': 'Product color (White, Black, Blue, Brown, Gold, etc.)',
         'type': 'STRING',
         'facet': True,
         'multiValueFacet': False,
@@ -60,7 +68,7 @@ FIELDS_TO_CREATE = [
     },
     {
         'name': 'material',
-        'description': 'Primary material',
+        'description': 'Primary material (Cotton, Leather, Silk, Gold, etc.)',
         'type': 'STRING',
         'facet': True,
         'multiValueFacet': False,
@@ -70,17 +78,7 @@ FIELDS_TO_CREATE = [
     },
     {
         'name': 'style',
-        'description': 'Product style (Casual, Formal, etc.)',
-        'type': 'STRING',
-        'facet': True,
-        'multiValueFacet': False,
-        'sort': True,
-        'includeInQuery': True,
-        'includeInResults': True,
-    },
-    {
-        'name': 'size',
-        'description': 'Product size',
+        'description': 'Product style (Casual, Formal, Sport, Luxury, Classic, Modern)',
         'type': 'STRING',
         'facet': True,
         'multiValueFacet': False,
@@ -100,19 +98,9 @@ FIELDS_TO_CREATE = [
     },
     {
         'name': 'pricerange',
-        'description': 'Price range bucket',
+        'description': 'Price range bucket ($0-$100, $100-$500, etc.)',
         'type': 'STRING',
         'facet': True,
-        'multiValueFacet': False,
-        'sort': True,
-        'includeInQuery': True,
-        'includeInResults': True,
-    },
-    {
-        'name': 'price',
-        'description': 'Product price',
-        'type': 'STRING',
-        'facet': False,
         'multiValueFacet': False,
         'sort': True,
         'includeInQuery': True,
@@ -128,10 +116,11 @@ FIELDS_TO_CREATE = [
         'includeInQuery': True,
         'includeInResults': True,
     },
-    # URL fields
+    
+    # === URL Fields ===
     {
         'name': 'imageurl',
-        'description': 'Product image URL',
+        'description': 'Product image URL (S3)',
         'type': 'STRING',
         'facet': False,
         'multiValueFacet': False,
@@ -159,7 +148,30 @@ FIELDS_TO_CREATE = [
         'includeInQuery': False,
         'includeInResults': True,
     },
-    # Description fields
+    
+    # === S3/Storage Fields ===
+    {
+        'name': 's3_key',
+        'description': 'S3 object key for the image',
+        'type': 'STRING',
+        'facet': False,
+        'multiValueFacet': False,
+        'sort': False,
+        'includeInQuery': False,
+        'includeInResults': True,
+    },
+    
+    # === Description Fields ===
+    {
+        'name': 'description',
+        'description': 'Product description',
+        'type': 'STRING',
+        'facet': False,
+        'multiValueFacet': False,
+        'sort': False,
+        'includeInQuery': True,
+        'includeInResults': True,
+    },
     {
         'name': 'longdescription',
         'description': 'Long product description',
@@ -170,10 +182,53 @@ FIELDS_TO_CREATE = [
         'includeInQuery': True,
         'includeInResults': True,
     },
-    # Multi-value field
+    
+    # === Multi-value Fields (from AI extraction) ===
+    {
+        'name': 'features',
+        'description': 'Product features list',
+        'type': 'STRING',
+        'facet': False,
+        'multiValueFacet': True,
+        'sort': False,
+        'includeInQuery': True,
+        'includeInResults': True,
+    },
+    {
+        'name': 'tags',
+        'description': 'Search tags for the product',
+        'type': 'STRING',
+        'facet': False,
+        'multiValueFacet': True,
+        'sort': False,
+        'includeInQuery': True,
+        'includeInResults': True,
+    },
+    
+    # === Legacy Fields (for backward compatibility) ===
+    {
+        'name': 'size',
+        'description': 'Product size',
+        'type': 'STRING',
+        'facet': True,
+        'multiValueFacet': False,
+        'sort': True,
+        'includeInQuery': True,
+        'includeInResults': True,
+    },
+    {
+        'name': 'price',
+        'description': 'Product price',
+        'type': 'STRING',
+        'facet': False,
+        'multiValueFacet': False,
+        'sort': True,
+        'includeInQuery': True,
+        'includeInResults': True,
+    },
     {
         'name': 'materials',
-        'description': 'List of materials',
+        'description': 'List of materials (multi-value)',
         'type': 'STRING',
         'facet': False,
         'multiValueFacet': True,
@@ -191,7 +246,8 @@ def get_existing_fields():
     
     if not api_key:
         print("Error: COVEO_FIELD_API_KEY not set in .env")
-        return {}
+        print("You need an API key with 'Edit fields' permission")
+        return None
     
     url = f"https://platform.cloud.coveo.com/rest/organizations/{org_id}/indexes/fields"
     
@@ -205,8 +261,13 @@ def get_existing_fields():
         if response.status_code == 200:
             data = response.json()
             return {f['name'].lower(): f for f in data.get('items', [])}
+        elif response.status_code == 401:
+            print("Error: Invalid API key or insufficient permissions")
+            print("Make sure your API key has 'Edit fields' permission")
+            return None
         else:
             print(f"Warning: Could not fetch existing fields: {response.status_code}")
+            print(response.text[:200])
             return {}
     except Exception as e:
         print(f"Warning: Error fetching fields: {e}")
@@ -270,15 +331,24 @@ def update_field(field_name, field_config):
 def main():
     """Main function"""
     print("\n" + "="*70)
-    print("Setup Coveo Fields for Faceting")
+    print("Setup Coveo Fields for Faceting & Search")
     print("="*70)
     print(f"Organization ID: {config.COVEO_ORGANIZATION_ID}")
-    print(f"Fields to create: {len(FIELDS_TO_CREATE)}")
+    print(f"Fields to configure: {len(FIELDS_TO_CREATE)}")
     print("="*70 + "\n")
     
     # Get existing fields
     print("Fetching existing fields...")
     existing_fields = get_existing_fields()
+    
+    if existing_fields is None:
+        print("\n❌ Cannot proceed without API access")
+        print("\nTo fix this:")
+        print("  1. Go to Coveo Admin Console > API Keys")
+        print("  2. Create a key with 'Edit fields' permission")
+        print("  3. Add COVEO_FIELD_API_KEY=your-key to .env")
+        return 1
+    
     print(f"Found {len(existing_fields)} existing fields\n")
     
     created = 0
@@ -288,14 +358,15 @@ def main():
     
     for field_config in FIELDS_TO_CREATE:
         field_name = field_config['name']
-        print(f"Processing: {field_name}...", end=" ")
+        print(f"  {field_name}...", end=" ")
         
         if field_name.lower() in existing_fields:
-            # Field exists - check if we need to update it
+            # Field exists - check if we need to update facet setting
             existing = existing_fields[field_name.lower()]
             needs_update = (
                 existing.get('facet') != field_config.get('facet') or
-                existing.get('includeInQuery') != field_config.get('includeInQuery')
+                existing.get('includeInQuery') != field_config.get('includeInQuery') or
+                existing.get('includeInResults') != field_config.get('includeInResults')
             )
             
             if needs_update:
@@ -307,7 +378,7 @@ def main():
                     print(f"✗ {message}")
                     failed += 1
             else:
-                print("✓ Already configured correctly")
+                print("✓ OK")
                 skipped += 1
         else:
             # Create new field
@@ -325,22 +396,27 @@ def main():
     print("\n" + "="*70)
     print("Summary")
     print("="*70)
-    print(f"Created: {created}")
-    print(f"Updated: {updated}")
-    print(f"Skipped (already correct): {skipped}")
-    print(f"Failed: {failed}")
+    print(f"  Created: {created}")
+    print(f"  Updated: {updated}")
+    print(f"  Already OK: {skipped}")
+    print(f"  Failed: {failed}")
     print("="*70)
     
     if failed == 0:
         print("\n✅ All fields configured successfully!")
+        print("\nFacet fields enabled:")
+        facet_fields = [f['name'] for f in FIELDS_TO_CREATE if f.get('facet')]
+        for f in facet_fields:
+            print(f"  • {f}")
         print("\nNext steps:")
-        print("  1. Generate products: python enhanced_mock_generator.py")
-        print("  2. Download images: python download_mock_images_to_s3.py")
-        print("  3. Index to Coveo: python coveo_indexer.py")
+        print("  1. Run AI pipeline: python ai_metadata_pipeline.py")
+        print("  2. Index to Coveo: python coveo_indexer.py --input output/ai_enriched_products.json")
+        return 0
     else:
         print(f"\n⚠️ {failed} fields failed to configure")
         print("You may need to create them manually in Coveo Admin Console")
+        return 1
 
 
 if __name__ == '__main__':
-    main()
+    sys.exit(main())

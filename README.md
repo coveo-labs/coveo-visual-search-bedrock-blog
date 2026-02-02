@@ -1,145 +1,107 @@
-# Luxury Reverse Image Search Demo
-## Coveo + Amazon OpenSearch + Bedrock Integration
+# Luxury Image Search Demo
 
-A sophisticated reverse image search solution combining Amazon OpenSearch's vector similarity with Coveo's personalized search capabilities, plus AI-powered metadata extraction.
+A visual search demo combining **Amazon OpenSearch** vector similarity with **Coveo** personalized search. Upload an image to find similar luxury products, or use text search with intelligent faceting.
 
 ## Features
 
-- 🔍 **Text Search** - Natural language search powered by Coveo
-- 🖼️ **Image Search** - Upload an image to find visually similar products
-- 🤖 **AI Metadata Extraction** - Extract structured product metadata using Amazon Bedrock Nova Lite
-- 📊 **Faceted Filtering** - Filter by category, color, price, style, material, etc.
-- ⚡ **Real-time IPE** - Coveo Index Pipeline Extension for automatic embedding generation
+- **Image Search:** Upload a photo to find visually similar products using Amazon Bedrock embeddings + OpenSearch k-NN
+- **Text Search:** Coveo-powered search with facets (category, color, material, style, etc.)
+- **AI Metadata Extraction:** Extract structured product metadata from images using Bedrock Nova Lite
+- **Coveo Analytics:** Automatic search and click event tracking via Coveo Headless
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                              User Interface                              │
-│                    (React + TailwindCSS + Netlify)                      │
-└─────────────────────────────────────────────────────────────────────────┘
-                                    │
-                    ┌───────────────┼───────────────┐
-                    ▼               ▼               ▼
-            ┌───────────┐   ┌───────────┐   ┌───────────┐
-            │   Text    │   │   Image   │   │ Metadata  │
-            │  Search   │   │  Search   │   │ Extractor │
-            └───────────┘   └───────────┘   └───────────┘
-                    │               │               │
-                    ▼               ▼               ▼
-            ┌───────────┐   ┌───────────┐   ┌───────────┐
-            │   Coveo   │   │ OpenSearch│   │  Bedrock  │
-            │ Search API│   │   k-NN    │   │ Nova Lite │
-            └───────────┘   └───────────┘   └───────────┘
-                    │               │
-                    └───────┬───────┘
-                            ▼
-                    ┌───────────────┐
-                    │    Coveo      │
-                    │  (Results +   │
-                    │   Facets)     │
-                    └───────────────┘
+User → Netlify UI → API Gateway → Lambda
+                                    ├── Bedrock (embeddings)
+                                    ├── OpenSearch (k-NN similarity)
+                                    └── Coveo (search + facets)
 ```
+
+## Quick Deploy
+
+```bash
+# 1. Configure environment
+cp .env.example .env
+# Edit .env with your AWS and Coveo credentials
+
+# 2. Deploy AWS stack
+cd infrastructure && sam build && sam deploy --guided
+
+# 3. Setup data pipeline
+cd ../scraper
+source ../venv/bin/activate && source ../.env
+python setup_coveo_fields.py
+python ai_metadata_pipeline.py
+python coveo_indexer.py --input output/ai_enriched_products.json
+
+# 4. Generate embeddings
+cd ../backend/embedding_generator
+python cleanup_and_reindex.py
+
+# 5. Deploy UI
+cd ../../ui
+npm install && npm run build && netlify deploy --prod
+```
+
+See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for detailed instructions.
 
 ## Project Structure
 
 ```
 ├── backend/
-│   ├── embedding_generator/   # Offline embedding generation
-│   ├── ipe_extension/         # Coveo IPE Lambda
-│   ├── metadata_extractor/    # AI metadata extraction Lambda
-│   ├── search_api/            # Search API Lambda
-│   └── layer/                 # Shared Lambda layer
+│   ├── search_api/          # Lambda for image search
+│   ├── metadata_extractor/  # Lambda for AI metadata extraction
+│   ├── embedding_generator/ # Scripts for OpenSearch indexing
+│   └── layer/               # Shared Python dependencies
 ├── infrastructure/
-│   └── template.yaml          # AWS SAM template
+│   └── template.yaml        # SAM/CloudFormation template
 ├── scraper/
-│   ├── enhanced_mock_generator.py  # Generate mock product data
-│   ├── coveo_indexer.py            # Index to Coveo
-│   ├── setup_coveo_fields.py       # Create Coveo fields
-│   └── full_setup.sh               # Complete setup script
+│   ├── ai_metadata_pipeline.py  # Download images + extract metadata
+│   ├── coveo_indexer.py         # Index products to Coveo
+│   └── setup_coveo_fields.py    # Create Coveo facet fields
 ├── ui/
 │   └── src/
-│       ├── App.jsx
-│       └── components/
-├── docs/
-│   ├── ARCHITECTURE.md
-│   ├── DEMO_GUIDE.md
-│   ├── DEPLOYMENT.md
-│   └── SETUP.md
-└── .env.example
+│       ├── components/      # React components
+│       ├── hooks/           # Coveo Headless hooks
+│       └── lib/             # Coveo engine config
+└── docs/
+    ├── DEPLOYMENT.md        # Full deployment guide
+    ├── ARCHITECTURE.md      # System architecture
+    └── SETUP.md             # Initial setup
 ```
-
-## Quick Start
-
-### Prerequisites
-
-- AWS Account with Bedrock access enabled
-- Python 3.11+ with pip
-- Node.js 18+ with npm
-- AWS CLI configured
-- Coveo organization with Push API access
-
-### 1. Configure Environment
-
-```bash
-cp .env.example .env
-# Edit .env with your credentials
-```
-
-### 2. Deploy AWS Infrastructure
-
-```bash
-cd infrastructure
-sam build
-sam deploy --guided
-```
-
-### 3. Setup Coveo Fields & Index Data
-
-```bash
-cd scraper
-pip install -r requirements.txt
-./full_setup.sh
-```
-
-### 4. Deploy UI
-
-```bash
-cd ui
-npm install
-npm run build
-netlify deploy --prod
-```
-
-## Environment Variables
-
-See `.env.example` for all required variables:
-
-| Variable | Description |
-|----------|-------------|
-| `AWS_REGION` | AWS region (default: us-east-1) |
-| `S3_BUCKET_NAME` | S3 bucket for images |
-| `OPENSEARCH_ENDPOINT` | OpenSearch domain endpoint |
-| `COVEO_ORGANIZATION_ID` | Coveo org ID |
-| `COVEO_PUSH_API_KEY` | Coveo Push API key |
-| `COVEO_SEARCH_API_KEY` | Coveo Search API key |
-| `COVEO_FIELD_API_KEY` | Coveo Field API key |
 
 ## Tech Stack
 
-**Backend:** Python 3.12, AWS Lambda, Amazon Bedrock, Amazon OpenSearch
+- **Frontend:** React + Vite + Tailwind CSS + Coveo Headless
+- **Backend:** AWS Lambda (Python 3.12)
+- **Search:** Coveo Search API + Amazon OpenSearch (k-NN)
+- **AI:** Amazon Bedrock (Titan Embeddings, Nova Lite)
+- **Infrastructure:** AWS SAM, CloudFormation
+- **Hosting:** Netlify (UI), AWS (Backend)
 
-**Frontend:** React 18, Vite, TailwindCSS, Framer Motion
+## Configuration
 
-**Infrastructure:** AWS SAM, CloudFormation, Netlify
+### Environment Variables
 
-## Documentation
+| Variable | Description |
+|----------|-------------|
+| `COVEO_ORGANIZATION_ID` | Coveo org ID |
+| `COVEO_PUSH_API_KEY` | Coveo Push API key |
+| `COVEO_SEARCH_API_KEY` | Coveo Search API key |
+| `COVEO_SOURCE_ID` | Coveo source ID |
+| `S3_BUCKET_NAME` | S3 bucket for images |
+| `OPENSEARCH_ENDPOINT` | OpenSearch domain endpoint |
 
-- [Setup Guide](docs/SETUP.md)
-- [Deployment Guide](docs/DEPLOYMENT.md)
-- [Architecture](docs/ARCHITECTURE.md)
-- [Demo Guide](docs/DEMO_GUIDE.md)
+### Coveo Setup
+
+1. Create a Push source in Coveo Admin Console
+2. Create API keys with appropriate permissions:
+   - Push API key (for indexing)
+   - Search API key (for UI)
+   - Field API key (for creating fields)
+3. Create a Query Pipeline and set condition for `Search Hub = LuxuryImageSearch`
 
 ## License
 
-Demo/POC - Not for production use
+MIT

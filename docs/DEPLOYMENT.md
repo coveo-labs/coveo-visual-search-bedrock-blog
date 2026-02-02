@@ -1,445 +1,279 @@
 # Deployment Guide
 
-Step-by-step deployment instructions for the Luxury Image Search demo.
+Complete step-by-step guide to deploy the Luxury Image Search demo.
 
 ## Prerequisites
 
-Complete [SETUP.md](./SETUP.md) before proceeding.
+- AWS CLI configured with credentials
+- AWS SAM CLI installed
+- Python 3.9+ with pip
+- Node.js 18+
+- Netlify CLI (`npm install -g netlify-cli`)
+- Coveo organization with Push API access
 
-## Deployment Steps
-
-### Step 1: Deploy AWS Infrastructure
-
-Deploy Lambda functions, API Gateway, and related resources:
-
-```bash
-cd infrastructure
-chmod +x deploy.sh destroy.sh
-./deploy.sh
-```
-
-The script will:
-1. Validate environment variables
-2. Build Lambda layer with dependencies
-3. Package Lambda functions
-4. Deploy CloudFormation stack
-5. Output API endpoints
-
-Expected output:
-```
-✅ Deployment completed successfully!
-
-📝 Stack Outputs:
-  API Endpoint: https://abc123.execute-api.us-east-1.amazonaws.com/prod
-  IPE Extension URL: https://xyz789.lambda-url.us-east-1.on.aws/
-
-🔧 Next Steps:
-  1. Update .env file with API_GATEWAY_URL=...
-  2. Configure Coveo IPE Extension with URL: ...
-  3. Run embedding generator
-  4. Deploy UI
-```
-
-### Step 2: Update Environment Variables
-
-Update `.env` file with the API endpoint:
+## Quick Start (TL;DR)
 
 ```bash
-# Add this line to .env
-API_GATEWAY_URL=https://abc123.execute-api.us-east-1.amazonaws.com/prod
+# 1. Setup environment
+cp .env.example .env
+# Edit .env with your credentials
+
+# 2. Deploy AWS infrastructure
+cd infrastructure && sam build && sam deploy --guided
+
+# 3. Setup Coveo fields
+cd ../scraper && source ../venv/bin/activate
+python setup_coveo_fields.py
+
+# 4. Run AI pipeline (download images, extract metadata)
+python ai_metadata_pipeline.py
+
+# 5. Index to Coveo
+python coveo_indexer.py --input output/ai_enriched_products.json
+
+# 6. Generate embeddings for OpenSearch
+cd ../backend/embedding_generator
+python cleanup_and_reindex.py
+
+# 7. Deploy UI
+cd ../../ui && npm install && npm run build && netlify deploy --prod
 ```
 
-Update UI environment:
+---
+
+## Detailed Steps
+
+### Step 1: Configure Environment
+
+Create `.env` file in project root:
 
 ```bash
-cd ui
 cp .env.example .env
 ```
 
-Edit `ui/.env`:
-```
-VITE_API_URL=https://abc123.execute-api.us-east-1.amazonaws.com/prod
-VITE_ENABLE_ANALYTICS=true
-```
+Edit `.env` with your values:
 
-### Step 3: Generate Embeddings
+```env
+# AWS Configuration
+AWS_REGION=us-east-1
+S3_BUCKET_NAME=your-bucket-name
 
-Pre-compute embeddings for all images in S3:
+# Coveo Configuration
+COVEO_ORGANIZATION_ID=your-org-id
+COVEO_PUSH_API_KEY=your-push-api-key
+COVEO_SEARCH_API_KEY=your-search-api-key
+COVEO_FIELD_API_KEY=your-field-api-key
+COVEO_SOURCE_ID=your-source-id
 
-```bash
-cd backend/embedding_generator
-python generate_embeddings.py
-```
-
-Expected output:
-```
-================================================================================
-Luxury Image Search - Embedding Generator
-================================================================================
-
-Configuration:
-  S3 Bucket: your-luxury-images-bucket
-  S3 Prefix: hermes-images/
-  OpenSearch: search-luxury-xxxxx.us-east-1.es.amazonaws.com
-  Index: luxury-image-embeddings
-  Bedrock Model: amazon.titan-embed-image-v1
-
-Creating OpenSearch index...
-Created index: luxury-image-embeddings
-
-Listing images from s3://your-luxury-images-bucket/hermes-images/...
-Found 50 images
-
-Processing images...
-
-[1/50] Processing: hermes-images/product-001.jpg
-  ✓ Indexed successfully
-[2/50] Processing: hermes-images/product-002.jpg
-  ✓ Indexed successfully
-...
-
-================================================================================
-Summary:
-  Total images: 50
-  Successfully indexed: 50
-  Failed: 0
-================================================================================
-
-✅ Embedding generation completed!
+# OpenSearch (auto-created by CloudFormation)
+OPENSEARCH_PASSWORD=YourSecurePassword123!
 ```
 
-This process:
-- Creates OpenSearch index with k-NN mapping
-- Downloads each image from S3
-- Generates embeddings using Bedrock
-- Indexes embeddings to OpenSearch
-
-**Time estimate:** ~2-3 seconds per image
-
-### Step 4: Configure Coveo IPE Extension
-
-Set up the IPE extension for live demo:
-
-1. Go to Coveo Platform → Sources
-2. Select your Push source
-3. Navigate to "Extensions" tab
-4. Click "Add Extension"
-5. Configure:
-   - **Name:** Image Embedding Generator
-   - **Type:** Document Object Extension
-   - **URL:** `https://xyz789.lambda-url.us-east-1.on.aws/` (from Step 1)
-   - **Method:** POST
-   - **Condition:** `@imageurl IS NOT NULL OR @s3_key IS NOT NULL`
-6. Save
-
-Test the extension:
-1. Push a new document with image
-2. Check CloudWatch Logs for IPE Lambda
-3. Verify embedding in OpenSearch
-
-### Step 5: Deploy UI to Netlify
-
-#### Option A: Netlify CLI (Recommended)
-
-```bash
-cd ui
-
-# Install Netlify CLI
-npm install -g netlify-cli
-
-# Login
-netlify login
-
-# Initialize site
-netlify init
-
-# Deploy
-netlify deploy --prod
-```
-
-Follow prompts:
-- Create new site or link existing
-- Build command: `npm run build`
-- Publish directory: `dist`
-
-#### Option B: Netlify UI
-
-1. Build the UI:
-```bash
-cd ui
-npm run build
-```
-
-2. Go to [Netlify](https://app.netlify.com/)
-3. Click "Add new site" → "Deploy manually"
-4. Drag and drop the `dist` folder
-5. Site is live!
-
-#### Option C: GitHub Integration
-
-1. Push code to GitHub
-2. Go to Netlify → "New site from Git"
-3. Select repository
-4. Build settings (auto-detected from netlify.toml):
-   - Build command: `npm run build`
-   - Publish directory: `dist`
-5. Add environment variables:
-   - `VITE_API_URL`: Your API Gateway URL
-   - `VITE_ENABLE_ANALYTICS`: `true`
-6. Deploy
-
-### Step 6: Alternative - Deploy UI to AWS App Runner
-
-If Netlify is not an option:
-
-1. Create Dockerfile in `ui/`:
-
-```dockerfile
-FROM node:18-alpine AS builder
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci
-COPY . .
-RUN npm run build
-
-FROM nginx:alpine
-COPY --from=builder /app/dist /usr/share/nginx/html
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]
-```
-
-2. Create `ui/nginx.conf`:
-
-```nginx
-server {
-    listen 80;
-    server_name _;
-    root /usr/share/nginx/html;
-    index index.html;
-
-    location / {
-        try_files $uri $uri/ /index.html;
-    }
-}
-```
-
-3. Build and push to ECR:
-
-```bash
-cd ui
-
-# Create ECR repository
-aws ecr create-repository --repository-name luxury-image-search-ui --region us-east-1
-
-# Login to ECR
-aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com
-
-# Build image
-docker build -t luxury-image-search-ui .
-
-# Tag image
-docker tag luxury-image-search-ui:latest ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/luxury-image-search-ui:latest
-
-# Push image
-docker push ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/luxury-image-search-ui:latest
-```
-
-4. Create App Runner service:
-
-```bash
-aws apprunner create-service \
-  --service-name luxury-image-search-ui \
-  --source-configuration '{
-    "ImageRepository": {
-      "ImageIdentifier": "ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/luxury-image-search-ui:latest",
-      "ImageRepositoryType": "ECR",
-      "ImageConfiguration": {
-        "Port": "80"
-      }
-    },
-    "AutoDeploymentsEnabled": false
-  }' \
-  --instance-configuration '{
-    "Cpu": "1 vCPU",
-    "Memory": "2 GB"
-  }' \
-  --region us-east-1
-```
-
-5. Get service URL:
-
-```bash
-aws apprunner describe-service --service-arn <service-arn> --region us-east-1
-```
-
-## Verification
-
-### Test the Complete Flow
-
-1. Open UI in browser
-2. Upload a test image
-3. Click "Search Similar Items"
-4. Verify:
-   - Loading state appears
-   - Results are displayed
-   - OpenSearch log shows matches
-   - Coveo results are personalized
-
-### Check CloudWatch Logs
-
-```bash
-# Search Lambda logs
-aws logs tail /aws/lambda/luxury-image-search --follow
-
-# IPE Extension logs
-aws logs tail /aws/lambda/coveo-ipe-extension --follow
-```
-
-### Verify OpenSearch Index
-
-```bash
-curl -u admin:password \
-  "https://your-opensearch-endpoint.amazonaws.com/luxury-image-embeddings/_count"
-```
-
-Should return count of indexed documents.
-
-### Test API Directly
-
-```bash
-# Convert image to base64
-base64 -i test-image.jpg -o test-image.b64
-
-# Test search endpoint
-curl -X POST https://your-api-gateway-url.com/prod/search \
-  -H "Content-Type: application/json" \
-  -d '{
-    "image": "data:image/jpeg;base64,<base64-string>"
-  }'
-```
-
-## Monitoring
-
-### CloudWatch Dashboards
-
-Create dashboard for monitoring:
-
-1. Go to CloudWatch → Dashboards
-2. Create dashboard: "Luxury Image Search"
-3. Add widgets:
-   - Lambda invocations
-   - Lambda errors
-   - Lambda duration
-   - API Gateway requests
-   - API Gateway latency
-
-### Alarms
-
-Set up alarms for:
-
-```bash
-# Lambda errors
-aws cloudwatch put-metric-alarm \
-  --alarm-name luxury-search-lambda-errors \
-  --alarm-description "Alert on Lambda errors" \
-  --metric-name Errors \
-  --namespace AWS/Lambda \
-  --statistic Sum \
-  --period 300 \
-  --threshold 5 \
-  --comparison-operator GreaterThanThreshold \
-  --evaluation-periods 1
-
-# API Gateway 5xx errors
-aws cloudwatch put-metric-alarm \
-  --alarm-name luxury-search-api-5xx \
-  --alarm-description "Alert on API 5xx errors" \
-  --metric-name 5XXError \
-  --namespace AWS/ApiGateway \
-  --statistic Sum \
-  --period 300 \
-  --threshold 10 \
-  --comparison-operator GreaterThanThreshold \
-  --evaluation-periods 1
-```
-
-## Cleanup
-
-To remove all resources:
+### Step 2: Deploy AWS Infrastructure
 
 ```bash
 cd infrastructure
-./destroy.sh
+
+# Build SAM application
+sam build
+
+# Deploy (first time - interactive)
+sam deploy --guided --stack-name luxury-image-search-demo --capabilities CAPABILITY_IAM
+
+# Or deploy with parameters directly
+sam deploy --stack-name luxury-image-search-demo \
+  --capabilities CAPABILITY_IAM \
+  --resolve-s3 \
+  --no-confirm-changeset \
+  --parameter-overrides \
+    S3BucketName=your-bucket-name \
+    CoveoOrgId=your-org-id \
+    CoveoPushApiKey=your-push-key \
+    CoveoSearchApiKey=your-search-key \
+    OpenSearchPassword=YourPassword123!
 ```
 
-This will:
-1. Delete CloudFormation stack
-2. Remove Lambda functions
-3. Delete API Gateway
-4. Clean up CloudWatch logs
-
-**Note:** OpenSearch domain and S3 bucket are NOT deleted automatically.
-
-Manual cleanup:
+**Important:** Note the API Gateway URL from the output. Update `.env`:
 
 ```bash
-# Delete OpenSearch domain
-aws opensearch delete-domain --domain-name luxury-image-search --region us-east-1
-
-# Empty and delete S3 bucket
-aws s3 rm s3://your-luxury-images-bucket --recursive
-aws s3 rb s3://your-luxury-images-bucket
+# Get the new API URL
+aws cloudformation describe-stacks \
+  --stack-name luxury-image-search-demo \
+  --query "Stacks[0].Outputs[?OutputKey=='SearchApiUrl'].OutputValue" \
+  --output text
 ```
+
+Update both `.env` and `ui/.env` with the new API URL.
+
+### Step 3: Setup Python Environment
+
+```bash
+cd /path/to/project
+
+# Create virtual environment
+python3 -m venv venv
+source venv/bin/activate
+
+# Install dependencies
+pip install -r scraper/requirements.txt
+pip install requests-aws4auth python-dotenv opensearch-py boto3
+```
+
+### Step 4: Setup Coveo Fields
+
+This creates the facet fields in Coveo for filtering:
+
+```bash
+cd scraper
+source ../venv/bin/activate
+source ../.env  # Load environment variables
+
+python setup_coveo_fields.py
+```
+
+Fields created: `category`, `subcategory`, `color`, `material`, `style`, `gender`, `pricerange`, `brand`, `imageurl`, `s3_key`, etc.
+
+### Step 5: Run AI Metadata Pipeline
+
+Downloads curated images from Unsplash, extracts metadata using Bedrock Nova Lite, and prepares for indexing:
+
+```bash
+cd scraper
+python ai_metadata_pipeline.py
+```
+
+This creates `output/ai_enriched_products.json` with ~150 products across 6 categories:
+- Shirts, Trousers, Jewelry, Watches, Shoes, Bags
+
+**Cost:** ~$0.03 for 150 images with Nova Lite
+
+### Step 6: Index to Coveo
+
+```bash
+cd scraper
+source ../.env
+
+# Verify source ID is correct
+echo $COVEO_SOURCE_ID
+
+# Index products
+python coveo_indexer.py --input output/ai_enriched_products.json
+```
+
+Wait 1-2 minutes for Coveo to process the documents.
+
+### Step 7: Generate Embeddings for OpenSearch
+
+This generates vector embeddings for image similarity search:
+
+```bash
+cd backend/embedding_generator
+source ../../venv/bin/activate
+
+# Clean and re-index with fresh embeddings
+python cleanup_and_reindex.py
+```
+
+Options:
+- `--delete-only` - Only delete existing documents
+- `--index-only` - Only index without deleting first
+
+**Cost:** ~$0.10 for 150 images with Titan Embeddings
+
+### Step 8: Deploy UI to Netlify
+
+```bash
+cd ui
+
+# Install dependencies
+npm install
+
+# Update .env with correct values
+cat > .env << EOF
+VITE_API_URL=https://your-api-gateway.execute-api.us-east-1.amazonaws.com/prod
+VITE_COVEO_ORG_ID=your-org-id
+VITE_COVEO_API_KEY=your-search-api-key
+VITE_COVEO_SEARCH_HUB=LuxuryImageSearch
+VITE_COVEO_PIPELINE=hermes
+VITE_ENABLE_ANALYTICS=true
+EOF
+
+# Build and deploy
+npm run build
+netlify deploy --prod
+```
+
+---
+
+## Verification
+
+1. **Text Search:** Visit your Netlify URL, search for "blue shirt" - should show results with facets
+2. **Image Search:** Upload an image to find similar products
+3. **AI Metadata:** Upload an image to extract metadata with Nova Lite
+4. **Coveo Analytics:** Check Coveo Admin Console > Analytics for search events
+
+---
 
 ## Troubleshooting
 
-### Deployment Fails
+### CORS Errors on Image Search
+- Verify API Gateway URL is correct in `ui/.env`
+- Check Lambda logs: `aws logs tail /aws/lambda/luxury-image-search --since 10m`
 
-Check:
-- AWS credentials are valid
-- SAM CLI is installed
-- All environment variables are set
-- IAM permissions are sufficient
+### Coveo Source Not Found
+- Verify `COVEO_SOURCE_ID` matches your Coveo source
+- Check in Coveo Admin Console > Content > Sources
 
-### Embeddings Generation Fails
+### OpenSearch Connection Failed
+- Verify OpenSearch endpoint in `.env`
+- Check OpenSearch access policy allows Lambda execution role
 
-Common issues:
-- Bedrock model not enabled
-- S3 bucket permissions
-- OpenSearch connection
-- Image format not supported
+### Wrong Pipeline Running
+- Set `VITE_COVEO_PIPELINE=your-pipeline-name` in `ui/.env`
+- Or configure Search Hub condition in Coveo Query Pipeline
 
-### UI Not Loading Results
+### Environment Variables Not Loading
+```bash
+# Always source .env before running scripts
+source /path/to/project/.env
+echo $COVEO_SOURCE_ID  # Verify it's set
+```
 
-Verify:
-- API Gateway URL is correct in `.env`
-- CORS is enabled on API Gateway
-- Lambda function has correct permissions
-- Network connectivity
+---
 
-### IPE Extension Not Working
+## Architecture
 
-Check:
-- Lambda URL is correct in Coveo
-- Lambda has public URL enabled
-- CloudWatch logs for errors
-- Document has required fields
+```
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│   Netlify   │────▶│ API Gateway │────▶│   Lambda    │
+│     UI      │     │             │     │  (Search)   │
+└─────────────┘     └─────────────┘     └──────┬──────┘
+                                               │
+                    ┌──────────────────────────┼──────────────────────────┐
+                    │                          │                          │
+                    ▼                          ▼                          ▼
+            ┌─────────────┐           ┌─────────────┐           ┌─────────────┐
+            │   Bedrock   │           │ OpenSearch  │           │    Coveo    │
+            │   (Embed)   │           │   (k-NN)    │           │  (Search)   │
+            └─────────────┘           └─────────────┘           └─────────────┘
+```
 
-## Cost Estimation
+**Flow:**
+1. User uploads image → Lambda generates embedding via Bedrock
+2. Embedding searches OpenSearch for similar images (k-NN)
+3. Asset IDs from OpenSearch query Coveo for full product data
+4. Results returned to UI with facets and metadata
 
-Approximate costs for demo (1 month):
+---
 
-- **Lambda:** ~$5 (1M requests)
-- **API Gateway:** ~$3.50 (1M requests)
-- **OpenSearch:** ~$50 (t3.small.search)
-- **Bedrock:** ~$10 (1000 images)
-- **S3:** ~$1 (storage + requests)
-- **CloudWatch:** ~$2 (logs)
+## Costs (Estimated)
 
-**Total:** ~$70/month
+| Service | Usage | Cost |
+|---------|-------|------|
+| Bedrock Nova Lite | 150 images metadata | ~$0.03 |
+| Bedrock Titan Embed | 150 embeddings | ~$0.10 |
+| OpenSearch t3.small | Per hour | ~$0.036 |
+| Lambda | Per 1M requests | ~$0.20 |
+| S3 | 150 images (~50MB) | ~$0.001 |
 
-For demo only, consider:
-- Using OpenSearch free tier (if eligible)
-- Deleting resources after demo
-- Using smaller OpenSearch instance
+**Total for demo setup:** ~$0.15 + OpenSearch hourly cost

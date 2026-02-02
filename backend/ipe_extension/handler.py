@@ -80,7 +80,7 @@ def index_to_opensearch(asset_id, embedding, metadata):
         document = {
             'asset_id': asset_id,
             'embedding_vector': embedding,
-            'image_url': metadata.get('image_url', ''),
+            'image_url': metadata.get('image_url', ''),  # Unsplash URL for display
             'metadata': metadata,
             'indexed_at': datetime.utcnow().isoformat()
         }
@@ -88,7 +88,8 @@ def index_to_opensearch(asset_id, embedding, metadata):
         response = opensearch_client.index(
             index=OPENSEARCH_INDEX,
             id=asset_id,
-            body=document
+            body=document,
+            refresh=True  # Make immediately searchable
         )
         
         return response['result'] in ['created', 'updated']
@@ -109,8 +110,11 @@ def lambda_handler(event, context):
         # Extract document data
         document = body.get('document', {})
         asset_id = document.get('assetid') or document.get('asset_id')
-        image_url = document.get('imageurl') or document.get('image_url')
+        
+        # Image sources - prefer S3 for embedding, but store Unsplash URL for display
         s3_key = document.get('s3_key')
+        s3_url = document.get('s3_url')
+        image_url = document.get('imageurl') or document.get('image_url')  # Unsplash URL
         
         if not asset_id:
             return {
@@ -140,11 +144,14 @@ def lambda_handler(event, context):
             # Not found, proceed with indexing
             pass
         
-        # Download image
+        # Download image - prefer S3 for better quality embeddings
         image_bytes = None
         if s3_key:
             print(f"Downloading from S3: {s3_key}")
             image_bytes = download_image_from_s3(s3_key)
+        elif s3_url and s3_url.startswith('http'):
+            print(f"Downloading from S3 URL: {s3_url}")
+            image_bytes = download_image_from_url(s3_url)
         elif image_url:
             print(f"Downloading from URL: {image_url}")
             image_bytes = download_image_from_url(image_url)
@@ -152,7 +159,7 @@ def lambda_handler(event, context):
             return {
                 'statusCode': 400,
                 'body': json.dumps({
-                    'error': 'No image source provided (s3_key or image_url)'
+                    'error': 'No image source provided (s3_key, s3_url, or imageurl)'
                 })
             }
         
@@ -160,17 +167,24 @@ def lambda_handler(event, context):
         print("Generating embedding...")
         embedding = generate_embedding(image_bytes)
         
-        # Prepare metadata
+        # Prepare metadata - store Unsplash URL for display
         metadata = {
             'title': document.get('title', ''),
             'description': document.get('description', ''),
             'category': document.get('category', ''),
-            'price': document.get('price', ''),
-            'image_url': image_url or f"s3://{S3_BUCKET}/{s3_key}",
-            'product_url': document.get('producturl', '')
+            'subcategory': document.get('subcategory', ''),
+            'color': document.get('color', ''),
+            'material': document.get('material', ''),
+            'style': document.get('style', ''),
+            'gender': document.get('gender', ''),
+            'pricerange': document.get('pricerange', ''),
+            'brand': document.get('brand', 'Hermès'),
+            'image_url': image_url,  # Store Unsplash URL for display
+            'product_url': document.get('producturl', ''),
+            's3_key': s3_key,
         }
         
-        # Index to OpenSearch
+        # Index to OpenSearch with Unsplash URL
         print("Indexing to OpenSearch...")
         success = index_to_opensearch(asset_id, embedding, metadata)
         

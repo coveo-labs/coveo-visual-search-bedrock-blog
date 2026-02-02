@@ -2,11 +2,13 @@
 Coveo Indexer
 
 Creates Coveo-compatible JSON payload and pushes products to Coveo using Push API
+Supports both scraped products and AI-enriched products.
 """
 
 import requests
 import json
 import os
+import argparse
 from datetime import datetime, timezone
 import config
 
@@ -31,13 +33,16 @@ class CoveoIndexer:
             'skipped': 0
         }
     
-    def load_scraped_data(self):
-        """Load scraped product data"""
-        input_file = os.path.join(config.OUTPUT_DIR, config.SCRAPED_DATA_FILE)
+    def load_products(self, input_file=None):
+        """Load product data from JSON file"""
+        if input_file is None:
+            input_file = os.path.join(config.OUTPUT_DIR, config.SCRAPED_DATA_FILE)
+        # Don't prepend OUTPUT_DIR if the file already exists at the given path
+        elif not os.path.isabs(input_file) and not os.path.exists(input_file):
+            input_file = os.path.join(config.OUTPUT_DIR, input_file)
         
         if not os.path.exists(input_file):
             print(f"❌ Error: {input_file} not found")
-            print("Please run hermes_scraper.py and image_downloader.py first")
             return []
         
         with open(input_file, 'r', encoding='utf-8') as f:
@@ -48,11 +53,11 @@ class CoveoIndexer:
     
     def create_coveo_document(self, product):
         """Create Coveo document structure from product data"""
-        # Use the original image URL for clickableuri (for display)
+        # Use the image URL for clickableuri (for display)
         image_url = product.get('image_url', '')
         
         # Create valid URI for document ID (must be unique)
-        asset_id = product['asset_id']
+        asset_id = product.get('asset_id', '')
         product_url = product.get('product_url', '')
         
         # Use product URL as document ID for uniqueness
@@ -65,6 +70,16 @@ class CoveoIndexer:
         product_attrs = product.get('product_attributes', {})
         product_details = product.get('product_details', {})
         
+        # Build description from multiple sources
+        description = product.get('description', '')
+        long_description = product.get('long_description', description)
+        
+        # Build tags string for searchability
+        tags = product.get('tags', [])
+        features = product.get('features', [])
+        tags_str = ', '.join(tags) if tags else ''
+        features_str = ', '.join(features) if features else ''
+        
         document = {
             # Required fields - documentId must be a valid URI
             'documentId': document_id,
@@ -72,8 +87,8 @@ class CoveoIndexer:
             # Standard fields
             'title': product.get('title', 'Hermès Product'),
             'assetid': asset_id,
-            'description': product.get('description', ''),
-            'longdescription': product.get('long_description', ''),
+            'description': description,
+            'longdescription': long_description,
             
             # Category fields for faceting
             'category': product.get('category', 'Uncategorized'),
@@ -83,7 +98,7 @@ class CoveoIndexer:
             'color': product.get('color', ''),
             'material': product.get('material', ''),
             'style': product.get('style', ''),
-            'size': product.get('size', ''),
+            'size': product.get('size', 'One Size'),
             'gender': product.get('gender', 'Unisex'),
             
             # Price fields
@@ -106,14 +121,17 @@ class CoveoIndexer:
             # Materials as multi-value field
             'materials': product.get('materials', []),
             
+            # Tags and features for search
+            'tags': tags_str,
+            'features': features_str,
+            
             # Product Details (as JSON string for Coveo)
             'productdetails': json.dumps(product_details) if product_details else '',
             
             # Metadata
-            'source': 'hermes_scraper',
+            'source': 'ai_pipeline' if product.get('ai_extracted') else 'hermes_scraper',
             'indexed_at': datetime.now(timezone.utc).isoformat(),
-            'scraped_at': product.get('scraped_at', ''),
-            'enriched_at': product.get('enriched_at', ''),
+            'created_at': product.get('created_at', ''),
             
             # Date for Coveo
             'date': int(datetime.now(timezone.utc).timestamp() * 1000),
@@ -125,10 +143,6 @@ class CoveoIndexer:
             field_name = key.lower().replace(' ', '_').replace('-', '_')
             if field_name and len(field_name) < 50:  # Reasonable field name length
                 document[f'detail_{field_name}'] = str(value)
-        
-        # Add any additional metadata
-        if product.get('s3_uploaded'):
-            document['s3_uploaded'] = True
         
         return document
     
@@ -223,7 +237,7 @@ class CoveoIndexer:
         print("="*60)
 
 
-def main():
+def main(input_file=None):
     """Main function"""
     # Check configuration
     if not all([config.COVEO_ORGANIZATION_ID, config.COVEO_PUSH_API_KEY, config.COVEO_SOURCE_ID]):
@@ -236,8 +250,8 @@ def main():
     
     indexer = CoveoIndexer()
     
-    # Load scraped data
-    products = indexer.load_scraped_data()
+    # Load product data
+    products = indexer.load_products(input_file)
     if not products:
         return
     
@@ -259,4 +273,9 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser(description="Index products to Coveo")
+    parser.add_argument("--input", "-i", type=str, default=None,
+                        help="Input JSON file (default: scraped_products.json)")
+    
+    args = parser.parse_args()
+    main(input_file=args.input)

@@ -1,120 +1,113 @@
 import { useState, useCallback } from 'react'
 import Header from './components/Header'
 import ImageUpload from './components/ImageUpload'
-import FacetSidebar from './components/FacetSidebar'
-import ProductGrid from './components/ProductGrid'
-import OpenSearchPanel from './components/OpenSearchPanel'
 import MetadataExtractor from './components/MetadataExtractor'
+import OpenSearchPanel from './components/OpenSearchPanel'
+import { CoveoProvider } from './components/CoveoProvider'
+import HeadlessSearchBox from './components/HeadlessSearchBox'
+import HeadlessResultList from './components/HeadlessResultList'
+import HeadlessFacets from './components/HeadlessFacets'
+import { useAnalytics } from './hooks/useCoveoSearch'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
 
-function App() {
-  const [results, setResults] = useState([])
-  const [opensearchResults, setOpensearchResults] = useState([])
-  const [facets, setFacets] = useState({})
-  const [selectedFacets, setSelectedFacets] = useState({})
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
-  const [activeTab, setActiveTab] = useState('text') // 'text', 'image', 'metadata'
-  const [showOpenSearchPanel, setShowOpenSearchPanel] = useState(false)
-  const [lastQuery, setLastQuery] = useState('')
-
-  // Text search using Coveo
-  const handleTextSearch = useCallback(async (query) => {
-    setLoading(true)
-    setError(null)
-    setLastQuery(query)
-    setActiveTab('text')
-    setOpensearchResults([])
-    
-    try {
-      const response = await fetch(`${API_URL}/text-search`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          query,
-          facets: selectedFacets 
-        }),
-      })
-      
-      if (!response.ok) throw new Error('Search failed')
-      
-      const data = await response.json()
-      setResults(data.results || [])
-      setFacets(data.facets || {})
-    } catch (err) {
-      console.error('Search error:', err)
-      // Fallback to direct Coveo search
-      await searchCoveoDirect(query)
-    } finally {
-      setLoading(false)
-    }
-  }, [selectedFacets])
-
-  // Direct Coveo search (fallback)
-  const searchCoveoDirect = async (query) => {
-    try {
-      const orgId = 'kranthipoccoveoorg3fs5k79o'
-      const apiKey = import.meta.env.VITE_COVEO_API_KEY
-      
-      // Build facet query
-      let aq = ''
-      Object.entries(selectedFacets).forEach(([field, values]) => {
-        if (values && values.length > 0) {
-          const facetQuery = values.map(v => `@${field}=="${v}"`).join(' OR ')
-          aq += aq ? ` AND (${facetQuery})` : `(${facetQuery})`
-        }
-      })
-      
-      const response = await fetch(`https://${orgId}.org.coveo.com/rest/search/v2`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          q: query,
-          aq: aq || undefined,
-          numberOfResults: 50,
-          groupBy: [
-            { field: '@category', maximumNumberOfValues: 10 },
-            { field: '@subcategory', maximumNumberOfValues: 10 },
-            { field: '@color', maximumNumberOfValues: 15 },
-            { field: '@pricerange', maximumNumberOfValues: 6 },
-            { field: '@gender', maximumNumberOfValues: 5 },
-            { field: '@style', maximumNumberOfValues: 10 },
-            { field: '@material', maximumNumberOfValues: 10 },
-            { field: '@size', maximumNumberOfValues: 10 },
-          ],
-        }),
-      })
-      
-      if (!response.ok) throw new Error('Coveo search failed')
-      
-      const data = await response.json()
-      setResults(data.results || [])
-      
-      // Extract facets from groupBy results
-      const extractedFacets = {}
-      if (data.groupByResults) {
-        data.groupByResults.forEach(group => {
-          const fieldName = group.field.replace('@', '')
-          extractedFacets[fieldName] = group.values.map(v => ({
-            value: v.value,
-            count: v.numberOfResults
-          }))
-        })
-      }
-      setFacets(extractedFacets)
-    } catch (err) {
-      console.error('Coveo direct search error:', err)
-      setError('Search failed. Please try again.')
-    }
+// Image Search Results Component (keeps existing functionality)
+function ImageSearchResults({ results, opensearchResults, loading }) {
+  if (loading) {
+    return (
+      <div className="flex-1">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          {[1, 2, 3, 4, 5, 6, 7, 8].map(i => (
+            <div key={i} className="glass-effect rounded-none overflow-hidden animate-pulse">
+              <div className="aspect-square bg-luxury-gold/10" />
+              <div className="p-4 space-y-3">
+                <div className="h-3 bg-luxury-gold/10 rounded w-1/4" />
+                <div className="h-4 bg-luxury-gold/10 rounded w-3/4" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
   }
+
+  if (results.length === 0) {
+    return (
+      <div className="flex-1 text-center py-16">
+        <p className="text-luxury-cream/60">Upload an image to find similar products</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex-1">
+      <p className="text-luxury-cream/60 text-sm mb-6">
+        {results.length} similar products found
+      </p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        {results.map((result, index) => {
+          const raw = result.raw || {}
+          const imageUrl = raw.imageurl || raw.thumbnailurl || ''
+          const title = result.title || raw.title || 'Product'
+          
+          return (
+            <div key={result.uniqueId || index} className="group glass-effect rounded-none overflow-hidden">
+              <div className="aspect-square overflow-hidden bg-luxury-charcoal/50">
+                {imageUrl ? (
+                  <img
+                    src={imageUrl}
+                    alt={title}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                    loading="lazy"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-luxury-cream/30">
+                    <svg className="w-16 h-16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} 
+                            d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                )}
+              </div>
+              <div className="p-4">
+                <p className="text-xs text-luxury-gold tracking-widest mb-1">
+                  {raw.brand || 'Hermès'}
+                </p>
+                <h3 className="text-luxury-cream font-medium mb-2 line-clamp-2 group-hover:text-luxury-gold transition-colors">
+                  {title}
+                </h3>
+                <div className="flex flex-wrap gap-1.5">
+                  {raw.category && (
+                    <span className="px-2 py-0.5 text-xs bg-luxury-gold/10 text-luxury-cream/70">{raw.category}</span>
+                  )}
+                  {raw.color && (
+                    <span className="px-2 py-0.5 text-xs bg-luxury-gold/10 text-luxury-cream/70">{raw.color}</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// Main App Content (inside CoveoProvider)
+function AppContent() {
+  const [imageResults, setImageResults] = useState([])
+  const [opensearchResults, setOpensearchResults] = useState([])
+  const [imageLoading, setImageLoading] = useState(false)
+  const [error, setError] = useState(null)
+  const [activeTab, setActiveTab] = useState('text')
+  const [showOpenSearchPanel, setShowOpenSearchPanel] = useState(false)
+  
+  // Analytics hook for custom events
+  const { logImageSearch, logMetadataExtraction, logCustom, isReady: analyticsReady } = useAnalytics()
 
   // Image search using OpenSearch + Coveo
   const handleImageSearch = useCallback(async (imageData) => {
-    setLoading(true)
+    setImageLoading(true)
     setError(null)
     setActiveTab('image')
     setShowOpenSearchPanel(true)
@@ -125,83 +118,29 @@ function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           image: imageData,
-          min_score: 0.5 // Minimum similarity threshold
+          min_score: 0.6 // 60% similarity threshold
         }),
       })
       
       if (!response.ok) throw new Error('Image search failed')
       
       const data = await response.json()
-      setResults(data.results || [])
+      setImageResults(data.results || [])
       setOpensearchResults(data.opensearch_results || [])
       
-      // Extract facets from results
-      const extractedFacets = extractFacetsFromResults(data.results || [])
-      setFacets(extractedFacets)
+      // Log image search event to Coveo Analytics
+      if (analyticsReady) {
+        const imageSize = imageData.length
+        const matchCount = data.results?.length || 0
+        logImageSearch(imageSize, matchCount)
+      }
     } catch (err) {
       console.error('Image search error:', err)
       setError('Image search failed. Please try again.')
     } finally {
-      setLoading(false)
+      setImageLoading(false)
     }
-  }, [])
-
-  // Extract facets from results
-  const extractFacetsFromResults = (results) => {
-    const facetData = {
-      category: {},
-      subcategory: {},
-      color: {},
-      pricerange: {},
-      gender: {},
-      style: {},
-      material: {},
-    }
-    
-    results.forEach(result => {
-      const raw = result.raw || {}
-      Object.keys(facetData).forEach(field => {
-        const value = raw[field]
-        if (value) {
-          facetData[field][value] = (facetData[field][value] || 0) + 1
-        }
-      })
-    })
-    
-    // Convert to array format
-    const facets = {}
-    Object.entries(facetData).forEach(([field, values]) => {
-      facets[field] = Object.entries(values)
-        .map(([value, count]) => ({ value, count }))
-        .sort((a, b) => b.count - a.count)
-    })
-    
-    return facets
-  }
-
-  // Handle facet changes
-  const handleFacetChange = useCallback((facetName, values) => {
-    setSelectedFacets(prev => ({
-      ...prev,
-      [facetName]: values
-    }))
-  }, [])
-
-  // Filter results by selected facets (client-side for image search)
-  const filteredResults = results.filter(result => {
-    const raw = result.raw || {}
-    
-    for (const [field, values] of Object.entries(selectedFacets)) {
-      if (values && values.length > 0) {
-        const resultValue = raw[field]
-        if (!resultValue || !values.includes(resultValue)) {
-          return false
-        }
-      }
-    }
-    
-    return true
-  })
+  }, [analyticsReady, logImageSearch])
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-luxury-black via-luxury-charcoal to-luxury-black">
@@ -217,9 +156,8 @@ function App() {
             Search by text or upload an image to find similar luxury items
           </p>
           
-          {/* Search Bar with Mode Toggle */}
+          {/* Tab Toggle */}
           <div className="max-w-4xl mx-auto mb-8">
-            {/* Tab Toggle */}
             <div className="flex justify-center mb-6">
               <div className="inline-flex rounded-none border border-luxury-gold/30 overflow-hidden">
                 <button
@@ -255,36 +193,10 @@ function App() {
               </div>
             </div>
 
-            {/* Tab Content */}
-            {activeTab === 'text' && (
-              <form onSubmit={(e) => { e.preventDefault(); handleTextSearch(lastQuery || e.target.query.value) }}>
-                <div className="relative">
-                  <input
-                    type="text"
-                    name="query"
-                    defaultValue={lastQuery}
-                    onChange={(e) => setLastQuery(e.target.value)}
-                    placeholder="Search for white shirt full sleeve, black leather shoes..."
-                    className="w-full px-6 py-5 bg-luxury-charcoal/50 border border-luxury-gold/30 
-                             rounded-none text-luxury-cream placeholder-luxury-cream/40
-                             focus:outline-none focus:border-luxury-gold transition-colors
-                             text-lg tracking-wide pr-32"
-                  />
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 px-8 py-3
-                             bg-luxury-gold text-luxury-black font-medium tracking-wider
-                             hover:bg-luxury-gold/90 transition-colors disabled:opacity-50
-                             disabled:cursor-not-allowed rounded-none"
-                  >
-                    {loading ? 'SEARCHING...' : 'SEARCH'}
-                  </button>
-                </div>
-              </form>
-            )}
+            {/* Search Input based on active tab */}
+            {activeTab === 'text' && <HeadlessSearchBox />}
             {activeTab === 'image' && (
-              <ImageUpload onSearch={handleImageSearch} loading={loading} />
+              <ImageUpload onSearch={handleImageSearch} loading={imageLoading} />
             )}
           </div>
         </div>
@@ -293,31 +205,35 @@ function App() {
       {/* Metadata Extractor Section */}
       {activeTab === 'metadata' && (
         <section className="px-6 pb-24">
-          <MetadataExtractor />
+          <MetadataExtractor onExtract={(fields) => {
+            if (analyticsReady) {
+              logMetadataExtraction(Object.keys(fields))
+            }
+          }} />
         </section>
       )}
 
-      {/* Results Section */}
-      {activeTab !== 'metadata' && (results.length > 0 || loading) && (
+      {/* Text Search Results (Coveo Headless) */}
+      {activeTab === 'text' && (
         <section className="px-6 pb-24">
           <div className="max-w-7xl mx-auto">
             <div className="flex gap-8">
-              {/* Facet Sidebar */}
-              {Object.keys(facets).length > 0 && (
-                <FacetSidebar
-                  facets={facets}
-                  selectedFacets={selectedFacets}
-                  onFacetChange={handleFacetChange}
-                />
-              )}
-              
-              {/* Product Grid */}
-              <ProductGrid
-                results={filteredResults}
-                opensearchResults={opensearchResults}
-                showOpenSearchPanel={activeTab === 'image'}
-              />
+              <HeadlessFacets />
+              <HeadlessResultList />
             </div>
+          </div>
+        </section>
+      )}
+
+      {/* Image Search Results */}
+      {activeTab === 'image' && (imageResults.length > 0 || imageLoading) && (
+        <section className="px-6 pb-24">
+          <div className="max-w-7xl mx-auto">
+            <ImageSearchResults 
+              results={imageResults} 
+              opensearchResults={opensearchResults}
+              loading={imageLoading}
+            />
           </div>
         </section>
       )}
@@ -339,6 +255,14 @@ function App() {
         />
       )}
     </div>
+  )
+}
+
+function App() {
+  return (
+    <CoveoProvider>
+      <AppContent />
+    </CoveoProvider>
   )
 }
 
