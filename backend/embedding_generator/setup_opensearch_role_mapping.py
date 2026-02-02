@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 OPENSEARCH_ENDPOINT = os.getenv('OPENSEARCH_ENDPOINT')
-OPENSEARCH_PASSWORD = os.getenv('OPENSEARCH_PASSWORD', 'CoveoDemo2026!')
+OPENSEARCH_PASSWORD = os.getenv('OPENSEARCH_PASSWORD', 'DemoTest!')
 AWS_REGION = os.getenv('AWS_REGION', 'us-east-1')
 
 print("=" * 70)
@@ -116,3 +116,4 @@ except Exception as e:
     print("     Login: admin / <your-password>")
     print("     Go to: Security → Roles → all_access → Mapped users")
     print(f"     Add backend role: {backend_role}")
+
