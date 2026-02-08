@@ -23,7 +23,7 @@ import {
 const COVEO_ORG_ID = import.meta.env.VITE_COVEO_ORG_ID;
 const COVEO_API_KEY = import.meta.env.VITE_COVEO_API_KEY;
 const COVEO_SEARCH_HUB = import.meta.env.VITE_COVEO_SEARCH_HUB || 'LuxuryImageSearch';
-const COVEO_PIPELINE = import.meta.env.VITE_COVEO_PIPELINE || 'hermes';
+const COVEO_PIPELINE = import.meta.env.VITE_COVEO_PIPELINE || 'luxury-search';
 
 /**
  * Create and configure the Coveo Search Engine

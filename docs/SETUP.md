@@ -77,7 +77,7 @@ aws s3 mb s3://your-luxury-images-bucket --region us-east-1
 Upload sample images:
 
 ```bash
-aws s3 cp ./sample-images/ s3://your-luxury-images-bucket/hermes-images/ --recursive
+aws s3 cp ./sample-images/ s3://your-luxury-images-bucket/product-images/ --recursive
 ```
 
 ### Coveo Setup
@@ -142,8 +142,8 @@ document = {
     "description": "Premium leather handbag",
     "category": "Handbags",
     "price": "$2,500",
-    "imageurl": "https://your-bucket.s3.amazonaws.com/hermes-images/product-12345.jpg",
-    "producturl": "https://hermes.com/product-12345"
+    "imageurl": "https://your-bucket.s3.amazonaws.com/product-images/product-12345.jpg",
+    "producturl": "https://example.com/product-12345"
 }
 
 response = requests.put(url, headers=headers, json=document)
@@ -172,7 +172,7 @@ Edit `.env` with your values:
 AWS_REGION=us-east-1
 AWS_ACCOUNT_ID=123456789012
 S3_BUCKET_NAME=your-luxury-images-bucket
-S3_IMAGES_PREFIX=hermes-images/
+S3_IMAGES_PREFIX=product-images/
 
 # Amazon Bedrock
 BEDROCK_MODEL_ID=amazon.titan-embed-image-v1

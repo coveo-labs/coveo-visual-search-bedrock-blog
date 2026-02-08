@@ -194,7 +194,7 @@ VITE_API_URL=https://your-api-gateway.execute-api.us-east-1.amazonaws.com/prod
 VITE_COVEO_ORG_ID=your-org-id
 VITE_COVEO_API_KEY=your-search-api-key
 VITE_COVEO_SEARCH_HUB=LuxuryImageSearch
-VITE_COVEO_PIPELINE=hermes
+VITE_COVEO_PIPELINE=luxury-search
 VITE_ENABLE_ANALYTICS=true
 EOF
 

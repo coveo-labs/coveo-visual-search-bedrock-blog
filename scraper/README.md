@@ -1,10 +1,10 @@
-# Hermes Product Scraper
+# Luxury Product Scraper
 
-Complete scraping and indexing solution for Hermes.com products.
+Complete scraping and indexing solution for luxury e-commerce products.
 
 ## Overview
 
-This scraper extracts product information from Hermes.com, downloads images to S3, and pushes structured data to Coveo for search indexing.
+This scraper extracts product information from curated sources, downloads images to S3, and pushes structured data to Coveo for search indexing.
 
 ## Features
 
@@ -22,7 +22,7 @@ This scraper extracts product information from Hermes.com, downloads images to S
 ```
 scraper/
 ├── config.py                 # Configuration settings
-├── hermes_scraper.py         # Main scraping logic
+├── ai_metadata_pipeline.py   # Main scraping logic with AI metadata
 ├── image_downloader.py       # Image download and S3 upload
 ├── coveo_indexer.py          # Coveo Push API integration
 ├── run_pipeline.py           # Complete pipeline runner
@@ -51,7 +51,7 @@ Ensure `.env` file in project root has:
 ```env
 AWS_REGION=us-east-1
 S3_BUCKET_NAME=your-bucket-name
-S3_IMAGES_PREFIX=hermes-images/
+S3_IMAGES_PREFIX=product-images/
 ```
 
 ### 3. Coveo Configuration
@@ -95,17 +95,17 @@ This runs all three steps automatically:
 
 ### Option 2: Run Individual Steps
 
-#### Step 1: Scrape Products
+#### Step 1: Run AI Metadata Pipeline
 
 ```bash
-python hermes_scraper.py
+python ai_metadata_pipeline.py
 ```
 
-**Output:** `output/scraped_products.json`
+**Output:** `output/ai_enriched_products.json`
 
 **What it does:**
-- Scrapes configured categories from Hermes.com
-- Extracts product information
+- Downloads curated product images
+- Extracts product information using AI
 - Generates unique asset IDs
 - Saves to JSON file
 
@@ -177,15 +177,16 @@ Contains raw scraped data:
 ```json
 [
   {
-    "asset_id": "hermes-abc12345",
+    "asset_id": "prod-abc12345",
     "title": "Birkin 30 Handbag",
-    "description": "Iconic Hermès Birkin bag...",
+    "description": "Iconic luxury handbag...",
     "price": "$12,500",
     "category": "bags-and-clutches",
-    "product_url": "https://www.hermes.com/...",
-    "image_url": "https://www.hermes.com/.../image.jpg",
-    "image_filename": "hermes-abc12345.jpg",
-    "s3_key": "hermes-images/hermes-abc12345.jpg",
+    "product_url": "https://example.com/...",
+    "image_url": "https://example.com/.../image.jpg",
+    "image_filename": "prod-abc12345.jpg",
+    "s3_key": "product-images/prod-abc12345.jpg",
+    "s3_url": "https://bucket.s3.amazonaws.com/...",
     "s3_url": "https://bucket.s3.amazonaws.com/...",
     "s3_uploaded": true,
     "brand": "Hermès",
@@ -208,18 +209,18 @@ Contains Coveo-formatted documents:
   },
   "documents": [
     {
-      "documentId": "hermes-abc12345",
+      "documentId": "prod-abc12345",
       "title": "Birkin 30 Handbag",
-      "assetid": "hermes-abc12345",
+      "assetid": "prod-abc12345",
       "description": "...",
       "category": "bags-and-clutches",
       "price": "$12,500",
-      "brand": "Hermès",
+      "brand": "Luxury Brand",
       "imageurl": "https://bucket.s3.amazonaws.com/...",
-      "producturl": "https://www.hermes.com/...",
-      "s3_key": "hermes-images/hermes-abc12345.jpg",
+      "producturl": "https://example.com/...",
+      "s3_key": "product-images/prod-abc12345.jpg",
       "s3_bucket": "your-bucket-name",
-      "clickableuri": "https://www.hermes.com/...",
+      "clickableuri": "https://example.com/...",
       "indexed_at": "2024-01-15T10:35:00"
     }
   ]
@@ -233,10 +234,10 @@ Asset IDs are generated using MD5 hash of product URL:
 ```python
 def generate_asset_id(product_url):
     url_hash = hashlib.md5(product_url.encode()).hexdigest()[:8]
-    return f"hermes-{url_hash}"
+    return f"prod-{url_hash}"
 ```
 
-Example: `hermes-abc12345`
+Example: `prod-abc12345`
 
 This ensures:
 - Unique IDs for each product
@@ -246,9 +247,9 @@ This ensures:
 ## Data Flow
 
 ```
-Hermes.com
+Product Sources
     ↓
-[hermes_scraper.py]
+[ai_metadata_pipeline.py]
     ↓
 scraped_products.json
     ↓
@@ -290,8 +291,8 @@ Adjust based on website's robots.txt and terms of service.
 - robots.txt restrictions
 
 **Solution:**
-- Check website HTML structure
-- Update CSS selectors in `hermes_scraper.py`
+- Check source availability
+- Update CSS selectors in scraping scripts if needed
 - Verify network access
 
 ### S3 upload fails
@@ -310,7 +311,7 @@ aws sts get-caller-identity
 aws s3 ls s3://your-bucket-name
 
 # Check permissions
-aws s3 ls s3://your-bucket-name/hermes-images/
+aws s3 ls s3://your-bucket-name/product-images/
 ```
 
 ### Coveo push fails
@@ -357,10 +358,7 @@ curl -X GET \
 
 ### 1. Respect robots.txt
 
-Always check and respect the website's robots.txt:
-```
-https://www.hermes.com/robots.txt
-```
+Always check and respect the source website's robots.txt and terms of service.
 
 ### 2. Rate Limiting
 
@@ -448,11 +446,11 @@ MAX_TOTAL_PRODUCTS = 100
 
 ### Modify Product Structure
 
-Edit `extract_product_info()` in `hermes_scraper.py` to extract additional fields.
+Edit `extract_product_info()` in the scraping scripts to extract additional fields.
 
 ### Custom Asset ID Format
 
-Modify `generate_asset_id()` in `hermes_scraper.py`:
+Modify `generate_asset_id()` in the scraping scripts:
 
 ```python
 def generate_asset_id(self, product_url):
@@ -489,7 +487,7 @@ Check progress in real-time:
 watch -n 1 ls -lh output/
 
 # Monitor S3 uploads
-watch -n 5 aws s3 ls s3://your-bucket/hermes-images/
+watch -n 5 aws s3 ls s3://your-bucket/product-images/
 
 # Check Coveo indexing
 # (Use Coveo dashboard)
@@ -509,7 +507,7 @@ For issues or questions:
 
 After successful scraping and indexing:
 
-1. ✅ Products scraped from Hermes.com
+1. ✅ Products scraped from sources
 2. ✅ Images uploaded to S3
 3. ✅ Products indexed in Coveo
 4. ⏭️ Generate embeddings (see main project README)

@@ -14,7 +14,8 @@ echo "AI Metadata Pipeline - Full Setup"
 echo "========================================================================"
 echo ""
 
-cd /mnt/d/Projects/Hermes/scraper
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+cd "$SCRIPT_DIR"
 
 # Step 0: Delete existing Coveo data (optional)
 read -p "Delete existing Coveo data first? (y/n): " delete_existing
@@ -60,7 +61,7 @@ python verify_coveo_data.py
 echo ""
 echo "Step 5: Generating embeddings in OpenSearch..."
 echo "----------------------------------------"
-cd /mnt/d/Projects/Hermes/backend/embedding_generator
+cd "$SCRIPT_DIR/../backend/embedding_generator"
 python generate_embeddings.py
 
 # Step 6: Build and deploy UI (optional)
@@ -69,7 +70,7 @@ if [ "$deploy_ui" = "y" ]; then
     echo ""
     echo "Step 6: Building and deploying UI..."
     echo "----------------------------------------"
-    cd /mnt/d/Projects/Hermes/ui
+    cd "$SCRIPT_DIR/../ui"
     npm run build
     netlify deploy --prod
 fi
@@ -85,7 +86,7 @@ echo "  ✓ Metadata extracted using Bedrock Nova Lite"
 echo "  ✓ Products indexed to Coveo with accurate metadata"
 echo "  ✓ Embeddings generated in OpenSearch"
 echo ""
-echo "Test the demo at: https://hermes-demo.netlify.app"
+echo "Test the demo at: https://luxury-visual-search.netlify.app"
 echo ""
 echo "Features:"
 echo "  - Text search with accurate product descriptions"

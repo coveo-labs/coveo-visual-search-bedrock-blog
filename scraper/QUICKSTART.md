@@ -1,6 +1,6 @@
 # Scraper Quick Start
 
-Get the Hermes scraper running in 5 minutes.
+Get the luxury product scraper running in 5 minutes.
 
 ## Prerequisites
 
@@ -21,7 +21,7 @@ Ensure `.env` file in project root has:
 # AWS
 AWS_REGION=us-east-1
 S3_BUCKET_NAME=your-bucket-name
-S3_IMAGES_PREFIX=hermes-images/
+S3_IMAGES_PREFIX=product-images/
 
 # Coveo
 COVEO_ORGANIZATION_ID=your-org-id
@@ -41,7 +41,7 @@ chmod +x run_pipeline.sh
 ```
 
 This will:
-1. ✅ Scrape products from Hermes.com
+1. ✅ Scrape products from curated sources
 2. ✅ Download images to S3
 3. ✅ Push to Coveo
 
@@ -50,7 +50,7 @@ This will:
 ### 1. Scrape Only
 
 ```bash
-python hermes_scraper.py
+python ai_metadata_pipeline.py
 ```
 
 Output: `output/scraped_products.json`
@@ -82,7 +82,7 @@ cat output/scraped_products.json | jq '.[0]'
 ### Check S3 Images
 
 ```bash
-aws s3 ls s3://your-bucket-name/hermes-images/
+aws s3 ls s3://your-bucket-name/product-images/
 ```
 
 ### Check Coveo
@@ -109,7 +109,7 @@ npm run dev
 
 ### No products scraped
 
-Website structure may have changed. Check `hermes_scraper.py` and update CSS selectors.
+Source may be unavailable or structure may have changed. Check scraping scripts and update selectors if needed.
 
 ### S3 upload fails
 

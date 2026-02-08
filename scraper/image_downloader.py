@@ -34,7 +34,7 @@ class ImageDownloader:
         
         if not os.path.exists(input_file):
             print(f"❌ Error: {input_file} not found")
-            print("Please run hermes_scraper.py first")
+            print("Please run ai_metadata_pipeline.py first")
             return []
         
         with open(input_file, 'r', encoding='utf-8') as f:

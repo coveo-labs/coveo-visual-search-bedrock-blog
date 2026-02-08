@@ -2,7 +2,7 @@
 Complete Scraping and Indexing Pipeline
 
 Runs the entire pipeline:
-1. Scrape Hermes products
+1. Scrape luxury products
 2. Download images to S3
 3. Push to Coveo
 """
@@ -51,13 +51,13 @@ def run_script(script_name, description):
 def main():
     """Run complete pipeline"""
     print("\n" + "="*70)
-    print("HERMES SCRAPING AND INDEXING PIPELINE")
+    print("LUXURY PRODUCT SCRAPING AND INDEXING PIPELINE")
     print("="*70)
     print(f"Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("="*70)
     
     steps = [
-        ('hermes_scraper.py', 'Scrape Hermes Products'),
+        ('ai_metadata_pipeline.py', 'Scrape Luxury Products'),
         ('metadata_enricher.py', 'Enrich Product Metadata'),
         ('image_downloader.py', 'Download Images to S3'),
         ('coveo_indexer.py', 'Push to Coveo'),

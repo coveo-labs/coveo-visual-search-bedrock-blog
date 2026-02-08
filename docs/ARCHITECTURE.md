@@ -317,7 +317,7 @@ response = bedrock_runtime.invoke_model(
   "price": "$2,500",
   "imageurl": "https://...",
   "producturl": "https://...",
-  "s3_key": "hermes-images/product-12345.jpg"
+  "s3_key": "product-images/product-12345.jpg"
 }
 ```
 
