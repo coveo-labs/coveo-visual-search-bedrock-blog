@@ -1,4 +1,4 @@
-# Luxury Image Search Demo
+# Luxury Image Search Demo (Blog Code)
 
 A visual search demo combining **Amazon OpenSearch** vector similarity with **Coveo** personalized search. Upload an image to find similar luxury products, or use text search with intelligent faceting.
 
@@ -105,3 +105,4 @@ See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for detailed instructions.
 ## License
 
 MIT
+
