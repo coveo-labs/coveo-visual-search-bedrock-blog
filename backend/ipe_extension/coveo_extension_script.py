@@ -1,8 +1,14 @@
 """
-Coveo Index Pipeline Extension (IPE) Script
+Coveo Index Pipeline Extension (IPE) Script - ASYNCHRONOUS VERSION
 
-This script runs in Coveo's indexing pipeline and calls the Lambda function
-to generate embeddings and index them to OpenSearch.
+This script runs in Coveo's indexing pipeline and triggers the Lambda function
+asynchronously to generate embeddings and index them to OpenSearch.
+
+ARCHITECTURE:
+- IPE sends fire-and-forget request to Lambda (non-blocking)
+- IPE returns immediately with embedding_status: pending
+- Lambda processes asynchronously in background
+- Lambda updates Coveo metadata via Push API when complete
 
 SETUP IN COVEO:
 1. Go to Coveo Admin Console > Organization > Extensions
@@ -25,11 +31,16 @@ FIELDS USED:
 - gender: Target gender
 - pricerange: Price range bucket
 - brand: Product brand
+
+METADATA FIELDS SET BY IPE:
+- embedding_status: 'pending' (will be updated to 'indexed' by Lambda)
+- embedding_trigger_sent: 'true'
+- embedding_triggered_at: ISO timestamp
 """
 
 import json
-import http.client
-import ssl
+import requests
+from datetime import datetime
 
 # =============================================================================
 # CONFIGURATION - Update this with your Lambda Function URL
@@ -49,6 +60,46 @@ def get_safe_meta_data(document, field_name, default=''):
         return default
 
 
+def trigger_lambda_async(lambda_url, payload, asset_id):
+    """
+    Fire-and-forget asynchronous trigger to Lambda.
+    
+    Uses a very short timeout (1ms) to ensure the request is sent but
+    the IPE doesn't wait for the response. This allows the IPE to return
+    immediately while Lambda processes in the background.
+    
+    Args:
+        lambda_url: Lambda Function URL
+        payload: JSON payload to send
+        asset_id: Asset ID for logging
+    
+    Returns:
+        tuple: (success: bool, message: str)
+    """
+    try:
+        # Fire-and-forget: send request with 1ms timeout
+        # This ensures request is sent but IPE doesn't wait for response
+        requests.post(
+            f'https://{lambda_url}/',
+            json=payload,
+            timeout=0.001,  # 1 millisecond - request sent but not waited for
+            stream=True
+        )
+    except requests.exceptions.ReadTimeout:
+        # EXPECTED: Request was sent, but we didn't wait for response
+        # This is the desired behavior for fire-and-forget
+        return True, f"Asynchronous trigger sent for {asset_id}"
+    except requests.exceptions.ConnectionError as e:
+        # REAL ERROR: Request couldn't be sent (network issue)
+        return False, f"Connection error triggering Lambda: {str(e)}"
+    except requests.exceptions.Timeout as e:
+        # Other timeout errors
+        return False, f"Timeout error: {str(e)}"
+    except Exception as e:
+        # Unexpected error
+        return False, f"Unexpected error: {str(e)}"
+
+
 # Get document data - core fields
 asset_id = get_safe_meta_data(document, 'assetid')
 image_url = get_safe_meta_data(document, 'imageurl')
@@ -60,16 +111,17 @@ title = get_safe_meta_data(document, 'title')
 if not image_url and not s3_key and not s3_url:
     log('No image source found (imageurl, s3_key, or s3_url), skipping embedding generation')
 else:
-    # Prepare payload with all relevant fields
+    # Prepare minimal payload for asynchronous processing
+    # Only include essential fields needed by Lambda
     payload = {
         'document': {
             # Core identification
             'assetid': asset_id,
-            'asset_id': asset_id,  # Alternative field name
+            'asset_id': asset_id,
             
             # Image sources
             'imageurl': image_url,
-            'image_url': image_url,  # Alternative field name
+            'image_url': image_url,
             's3_key': s3_key,
             's3_url': s3_url,
             
@@ -91,49 +143,20 @@ else:
         }
     }
     
-    # Call Lambda function to generate embedding and index to OpenSearch
-    try:
-        # Create SSL context
-        context = ssl.create_default_context()
-        
-        # Connect to Lambda Function URL
-        conn = http.client.HTTPSConnection(LAMBDA_URL, context=context)
-        
-        headers = {
-            'Content-Type': 'application/json'
-        }
-        
-        # Make POST request
-        conn.request('POST', '/', json.dumps(payload), headers)
-        
-        # Get response
-        response = conn.getresponse()
-        response_data = response.read().decode('utf-8')
-        
-        if response.status == 200:
-            result = json.loads(response_data)
-            status = result.get('status', 'unknown')
-            
-            if status == 'indexed':
-                log(f"Embedding generated and indexed for {asset_id}")
-                # Add metadata to indicate embedding was generated
-                document.add_meta_data({'embedding_indexed': 'true'})
-                document.add_meta_data({'embedding_status': 'success'})
-            elif status == 'already_indexed':
-                log(f"Asset {asset_id} already indexed in OpenSearch")
-                document.add_meta_data({'embedding_indexed': 'true'})
-                document.add_meta_data({'embedding_status': 'already_exists'})
-            else:
-                log(f"Lambda returned status: {status} for {asset_id}")
-                document.add_meta_data({'embedding_status': status})
-        else:
-            log(f"Lambda returned HTTP {response.status}: {response_data[:200]}")
-            document.add_meta_data({'embedding_status': 'error'})
-            document.add_meta_data({'embedding_error': f'HTTP {response.status}'})
-        
-        conn.close()
-        
-    except Exception as e:
-        log(f"Error calling Lambda for {asset_id}: {str(e)}")
-        document.add_meta_data({'embedding_status': 'error'})
-        document.add_meta_data({'embedding_error': str(e)[:100]})
+    # Trigger Lambda asynchronously (fire-and-forget)
+    success, message = trigger_lambda_async(LAMBDA_URL, payload, asset_id)
+    
+    if success:
+        log(message)
+        # Set metadata flags to track asynchronous processing
+        document.add_meta_data({'embedding_status': 'pending'})
+        document.add_meta_data({'embedding_trigger_sent': 'true'})
+        document.add_meta_data({'embedding_triggered_at': datetime.utcnow().isoformat()})
+    else:
+        log(f"ERROR: {message}")
+        document.add_meta_data({'embedding_status': 'trigger_failed'})
+        document.add_meta_data({'embedding_error': message[:100]})
+    
+    # CRITICAL: Return document immediately
+    # IPE does not wait for Lambda to complete
+    # Lambda will update metadata via Coveo Push API when embedding is ready
